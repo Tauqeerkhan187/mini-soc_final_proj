@@ -1,0 +1,6 @@
+rules:
+  port_scan:
+    window_sec: 5
+    threshold_ports: 12
+    cooldown_sec: 15
+

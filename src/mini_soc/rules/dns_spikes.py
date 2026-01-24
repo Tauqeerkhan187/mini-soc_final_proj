@@ -1,61 +1,50 @@
 # Author:TK
 # Date: 23-01-2026
-# Desc:
+# Desc: Detects DNS query spikes per src ip using a sliding time window.
 
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import Deque, Dict, Optional, Tuple, List
 
-from scapy.layers.inet import IP, UDP
-from scapy.layers.dns import DNS, DNSQR
+from .base import Rule
+from ..models import NetEvent, Alert
 
-@dataclass
-class Alert:
-    rule: str
-    severity: str
-    timestamp: float
-    src: str
-    dst: str
-    message: str
-    metadata: dict
 
-class DnsSpikeRule:
+class DnsSpikeRule(Rule):
     """
     Detects DNS query spikes per source IP using a sliding time window.
     Triggers on either:
         - Total queries in window >= query_threshold
         - unique qnames in window >= unique_threshold
     """
-    name = "dns_spike"
-    description = "Detect DNS query spikes per host"
+    rule_id = "dns_spike"
+    name = "DNS Spike"
     severity = "medium"
 
-    def __init__(
-        self,
-        window_seconds: int = 10,
-        query_threshold: int = 25,
-        unique_threshold: int = 15,
-        min_window_packets: int = 10,
-        cooldown_seconds: int = 30,
-        track_unique: bool = True,
+    def __init__(self, config = None):
 
-    ):
-        self.window_seconds = window_seconds
-        self.query_threshold = query_threshold
-        self.unique_threshold = unique_threshold
-        self.min_window_packets = min_window_packets
-        self.cooldown_seconds = cooldown_seconds
-        self.track_unique = track_unique
+        # Sliding win parameters
+
+        self.window_seconds: int = int(self.config,get("windows_seconds", 10))
+        self.query_threshold: int = int(self.config.get("query_threshold", 20))
+        # unique threshold 0 = disabled
+        self.unique_dst_threshold: int = int(self.config.get("unique_dst_threshold", 0))
+        self.min_window_packets: int = int(self.config,get("min_window_packets", 8))
+        self.cooldown_seconds: int = int(self.config.get("cooldown_seconds", 20))
+
 
         self.q_times: Dict[str, Deque[float]] = defaultdict(deque)
-        self.qname_times: Dict[str, Deque[Tuple[float, str]]] = defaultdict(deque)
-        self,qname_counts: Dict[str, Dict[str, int]] = defaultdict(
-            lambda: default)
+        self.dst_times: Dict[str, Deque[Tuple[float, str]]] = defaultdict(deque)
+        self.dst_counts: Dict[str, Dict[str, int]] = defaultdict(
+            lambda: defaultdict(int))
         self.last_alert_time: Dict[str, float] = {}
 
+
     def _prune(self, src: str, now: float):
+        """
+        removes entries older than win_seconds for this src.
+        """
         cutoff = now - self.window_seconds
 
         # prune total query timestamps
@@ -63,106 +52,92 @@ class DnsSpikeRule:
         while qt and qt[0] < cutoff:
             qt.popleft()
 
-        if not self.track_unique:
+        if self.unique_dst_threshold <= 0:
             return
 
         # prune qname timestamps + counts
-        qnt = self.qname_times[src]
-        qnc = self.qname_counts[src]
-        while qnt and qnt[0][0] < cutoff:
-            _, qname = qnt.popleft()
-            qnc[qname] -= 1
-            if qnc[qname] <= 0:
-                del qnc[qname]
+        dt = self.dst_times[src]
+        dc = self.dst_counts[src]
+        while dt and dt[0][0] < cutoff:
+            _, dst = dt.popleft()
+            dc[dst] -= 1
+            if dc[dst] <= 0:
+                del dc[dst]
 
     def _cooldown_ok(self, src: str, now: float) -> bool:
         last = self.last_alert_time.get(src)
         return last is None or (now - last) >= self.cooldown_seconds
 
 
-    def on_packet(self, pkt, ts: float) -> List[Alert]:
+    def process(self, event: NetEvent) -> List[Alert]:
         """
-        Return 0..n alerts for this packet.
+        Process a single NetEvents object and return 0...n alerts.
 
+        DNS heuristic used here:
+        - UDP traffic
+        - dest port 53 (DNS)
         """
-        alerts: List[Alert] = []
+        if event.proto != "UDP":
+            return []
 
-        # Must be DNS query over UDP/53
-        if not (pkt.haslayer(IP) and pkt.haslayer(UDP) and pkt.haslayer(DNS)):
-            return alerts
+        if event.dst_port != 53:
+            return []
 
-        ip = pkt[IP]
-        udp = pkt[UDP]
-        dns = pkt[DNS]
+        src = event.src_ip
+        dst = event.dst_ip
+        now = float(event.ts)
 
-        # only queries (qr = 0). Also ensure it has a question record.
-        if dns.qr != 0 or not pkt.haslayer(DNSQR):
-            return alerts
-
-        # client -> server is dport 53
-        if udp.dport != 53:
-            return alerts
-
-        src = ip.src
-        dst = ip.dst
-        now = ts
-
-        # record
+        # Record DNS query timestamp
         self.q_times[src].append(now)
 
-        qname = None
-        if self.track_unique:
-            try:
-                raw = pkt[DNSQR].qname
-                qname = raw.decode(errors = "ignore"),rstrip(".").lower()
-            except Exception:
-                qname = "<decode_error>"
+        # optionally track uniqueness by DNS server destination IP
+        if self.unique_dst_threshold > 0:
+            self.dst_times[src].append((now, dst))
+            self.dst_counts[src][dst] += 1
 
-            self.qname_times[src].append((now, qname))
-            self.qname__counts[src][qname] += 1
-
-        # remove old entries
-        self._prune(src, now)
-
+        # prune old timestamps outside the sliding window
+        self.prune(src, now)
 
         total_q = len(self.q_times[src])
         if total_q < self.min_window_packets:
-            return alerts
+            return []
 
-        unique_q = len(self.qname_counts[src]) if self.track_unique else 0
+        unique_dst = len(self.dst_counts[src]) if self.unique_dst_threshold > 0 else 0
 
         trigger_rate = total_q >= self.query_threshold
-        trigger_unique = self.track_unique and unique_q >= self.unique_threshold
+        trigger_unique = self.unique_dst_threshold > 0 and unique_dst >=
+        self.unique_dst_threshold
 
-        if (trigger_rate or trigger_unique) and self._cooldown_ok(src, now):
+        if(trigger_rate or trigger_unique) and self.cooldown_ok(src, now):
             self.last_alert_time[src] = now
 
             reason = []
             if trigger_rate:
-                reason.append(f"rate={total_q}/{self.window_seconds}s
-                              (>= {self.query_threshold})")
-            if trigger_unique:
-                reason.append(f"unique={unique_q}/{self.window_seconds}s
-                              (>= {self.unique_threshold})")
+                reasons.append(f"rate = {total_q}/{self.window_seconds}s
+                (>= {self.query_threshold})")
+                 if trigger_unique:
+            reasons.append(f"unique_dns_servers={unique_dst}
+                           (>= {self.unique_dst_threshold})")
 
-            alerts.append(
-                Alert(
-                    rule = self.name,
-                    severity = self.severity,
-                    timestamp = now,
-                    src = src,
-                    dst = dst,
-                    message = f"DNS spike detected from {src}: " + ", ".join(reason),
-                    metadata={
-                        "window_seconds": self.window_seconds,
-                        "total_queries_in_window": total_q,
-                        "unique_qnames_in_window": unique_q,
-                        "dst_dns_server": dst,
-                        "example_qname": qname,
-                    },
-                )
+        return [
+            Alert(
+                ts=now,
+                rule_id=self.rule_id,
+                severity=self.severity,
+                title="DNS query spike detected !",
+                description=f"{src} generated high DNS activity: " + ", ".join(reasons),
+                src_ip=src,
+                dst_ip=dst,
+                evidence={
+                    "proto": event.proto,
+                    "src_port": event.src_port,
+                    "dst_port": event.dst_port,
+                    "window_seconds": self.window_seconds,
+                    "total_queries_in_window": total_q,
+                    "unique_dns_servers_in_window": unique_dst,
+                    "cooldown_seconds": self.cooldown_seconds,
+                },
             )
+        ]
 
-        return alerts
-
-
+    return []

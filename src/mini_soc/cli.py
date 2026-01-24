@@ -51,7 +51,7 @@ def main():
 
     # extract rule specific config
     rules = [
-        PortScanRule(rules_cfg.get("port_scan", {}))
+        PortScanRule(rules_cfg.get("port_scan", {})),
         DnsSpikeRule(rules_cfg.get("dns_spike", {})),
     ]
 

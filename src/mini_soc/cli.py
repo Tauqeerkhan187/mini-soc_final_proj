@@ -46,6 +46,9 @@ def print_pcap_stats(pcap_path: str) -> None:
     src_counts = Counter()
     dst_counts = Counter()
 
+    udp53 = 0
+    tcp53 = 0
+
     unique_src = set()
     unique_dst = set()
 

@@ -1,11 +1,13 @@
 rules:
   port_scan:
+    enabled: true
     window_sec: 5
     threshold_ports: 12
     cooldown_sec: 15
 
 
   dns_spike:
+    enabled: true
     window_seconds: 10
     query_threshold: 3
     min_window_packets: 3

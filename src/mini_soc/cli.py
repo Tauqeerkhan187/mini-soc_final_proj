@@ -8,11 +8,15 @@
 # Print alerts to console
 # Save alerts to JSON file
 # To execute : python -m mini_soc.cli --pcap sample.pcap --config config.yaml --out alerts.json
+# python -m mini_soc.cli --pcap pcaps/sample.pcap --stats
+
 
 from __future__ import annotations
+
 import argparse
-import yaml
+from collections import Counter
 from typing import List
+import yaml
 
 # Internal proj imports
 from .capture import events_from_pcap
@@ -27,6 +31,55 @@ def load_config(path: str):
 
     with open(path, "r", encoding = "utf-8") as file:
         return yaml.safe_load(file) or {}
+
+def _is_enabled(rule_cfg: dict) -> bool:
+    """If enabled is missing, default to True"""
+    return bool(rule_cfg.get("enabled", True))
+
+def print_pcap_stats(pcap_path: str) -> None:
+    """
+    Print PCAP stats based on normalized NetEvent objs.
+    this does not run detection rules.
+    """
+    total = 0
+    proto_counts = Counter()
+    src_counts = Counter()
+    dst_counts = Counter()
+
+    unique_src = set()
+    unique_dst = set()
+
+    for ev in events_from_pcap(pcap_path):
+        total += 1
+        proto_counts[ev.proto] += 1
+        src_counts[ev.src_ip] += 1
+        dst_counts[ev.dst_ip] += 1
+        unique_src.add(ev.src_ip)
+        unique_dst.add(ev.dst_ip)
+
+        if ev.dst_port == 53:
+            if ev.proto == "UDP":
+                udp53 += 1
+            elif ev.proto == "TCP":
+                tcp53 += 1
+
+    print("\n- PCAP Stats -")
+    print(f"PCAP: {pcap_path}")
+    print(f"Total events: {total}")
+    print(f"Protocols: {dict(proto_counts)}")
+    print(f"Unique src IPs: {len(unique_src)}")
+    print(f"Unique dst IPs: {len(unique_dst)}")
+    print(f"UDP -> 53 events (DNS heuristic): {udp53}")
+    print(f"TCP -> 53 events: {tcp53}")
+
+    # Top talkers
+    print("\nTop 5 source IPs:")
+    for ip, cnt in src_counts.most_common(5):
+        print(f"  {ip}: {cnt}")
+
+    print("\nTop 5 destination IPs:")
+    for ip, cnt in dst_counts.most_common(5):
+        print(f"  {ip}: {cnt}")
 
 
 def main():
@@ -43,33 +96,67 @@ def main():
     ap.add_argument("--pcap", required=True, help="Path to .pcap file")
     ap.add_argument("--config", default="config.yaml", help="Path to config.yaml")
     ap.add_argument("--out", default="alerts.json", help="Output JSON report path")
+
+    ap.add_argument(
+        "--stats", action = "store_true", help="Print pcap statistics and exit",
+    )
+
     args = ap.parse_args()
+
+    # if stats requested, print and exit
+    if args.stats:
+        print_pcap_stats(args.pcap)
+        return
 
     # load config
     cfg = load_config(args.config)
     rules_cfg = cfg.get("rules", {})
 
-    # extract rule specific config
-    rules = [
-        PortScanRule(rules_cfg.get("port_scan", {})),
-        DnsSpikeRule(rules_cfg.get("dns_spike", {})),
-    ]
+     # Build enabled rules list
+    rules = []
 
-    # alert collection
+    port_scan_cfg = rules_cfg.get("port_scan", {})
+    if _is_enabled(port_scan_cfg):
+        rules.append(PortScanRule(port_scan_cfg))
+
+    dns_spike_cfg = rules_cfg.get("dns_spike", {})
+    if _is_enabled(dns_spike_cfg):
+        rules.append(DnsSpikeRule(dns_spike_cfg))
+
+    # Collect alerts
     alerts: List[Alert] = []
+    event_count = 0
+    alert_counts = Counter()
 
-    # process ev from PCAP
+    # Process events from PCAP
     for ev in events_from_pcap(args.pcap):
+        event_count += 1
         for rule in rules:
-            alerts.extend(rule.process(ev))
+            new_alerts = rule.process(ev)
+            if new_alerts:
+                alerts.extend(new_alerts)
+                alert_counts[rule.rule_id] += len(new_alerts)
 
-    # print formatted alerts
+    # Print alerts (one per line)
     for a in alerts:
         print(f"[{a.severity.upper()}] {a.rule_id} {a.title} :: {a.description}")
+
+    # Print summary
+    enabled_rule_ids = ", ".join([r.rule_id for r in rules]) if rules else "none"
+    print("\n- Summary -")
+    print(f"PCAP: {args.pcap}")
+    print(f"Events processed: {event_count}")
+    print(f"Rules enabled: {enabled_rule_ids}")
+    if alerts:
+        per_rule = ", ".join(f"{rid}={cnt}" for rid, cnt in alert_counts.items())
+        print(f"Alerts: {len(alerts)} ({per_rule})")
+    else:
+        print("Alerts: 0")
 
     # ALWAYS save output, even if empty
     save_alerts_json(alerts, args.out)
     print(f"\nSaved {len(alerts)} alerts to {args.out}")
+
 
 if __name__ == "__main__":
     main()

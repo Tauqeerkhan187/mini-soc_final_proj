@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 @dataclass(frozen=True)
-class NetEvents:
+class NetEvent:
     ts: float
     src_ip: str
     dst_ip: str

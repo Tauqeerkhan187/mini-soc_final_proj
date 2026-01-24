@@ -28,15 +28,12 @@ class DnsSpikeRule(Rule):
 
         # Sliding win parameters
 
-        self.window_seconds: int = int(self.config.get("windows_seconds", 10))
+        self.window_seconds: int = int(self.config.get("window_seconds", 10))
         self.query_threshold: int = int(self.config.get ("query_threshold", 15))
         # unique threshold 0 = disabled
         self.unique_dst_threshold: int = int(self.config.get( "unique_dst_threshold", 0))
         self.min_window_packets: int = int(self.config.get ("min_window_packets", 8))
         self.cooldown_seconds: int = int(self.config.get ("cooldown_seconds", 20))
-
-        # tracks unique dns servers (optional)
-        self.unique_dst_threshold: int = int(self.config.get("unique_dst_threshold"))
 
 
         self.q_times: Dict[str, Deque[float]] = defaultdict(deque)

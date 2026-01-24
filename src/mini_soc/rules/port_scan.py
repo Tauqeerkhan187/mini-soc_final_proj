@@ -9,8 +9,8 @@ from .base import Rule
 from ..models import NetEvent, Alert
 
 class PortScanRule(Rule):
-    rule_id = "PORTSCAN"
-    name = "Potential Port Scan"
+    rule_id = "port_scan"
+    name = "Port Scan"
     severity = "high"
 
     def __init__(self, config=None):
@@ -41,13 +41,13 @@ class PortScanRule(Rule):
 
         # coldown to avoid spam alerts every packet
         last = self.alerted.get(key)
-        if last is not None and (event.ts - last) < self.cooldown_sec:
+        if last is not None and (ev.ts - last) < self.cooldown_sec:
             return []
 
         if len(unique_ports) >= self.threshold_ports:
             self.alerted[key] = ev.ts
             return [Alert(
-                ts = event.ts,
+                ts = ev.ts,
                 rule_id = self.rule_id,
                 severity = self.severity,
                 title = self.name,
@@ -55,8 +55,8 @@ class PortScanRule(Rule):
             f"{ev.src_ip} hit {len(unique_ports)} distinct TCP ports on"
                 f"{ev.dst_ip} within {self.window_sec}s"
                 ),
-                src_ip = event.src_ip,
-                dst_ip = event.dst_ip,
+                src_ip = ev.src_ip,
+                dst_ip = ev.dst_ip,
                 evidence = {
                     "window_sec": self.window_sec,
                     "distinct_ports": sorted(unique_ports)[:50],

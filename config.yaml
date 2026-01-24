@@ -11,4 +11,7 @@ rules:
     min_window_packets: 3
     _cooldown_seconds: 5
     unique_dst_threshold: 0
+    ignore_local: true
+    ignore_src_prefixes: ["127."]
+    ignore_dst_ips: ["127.0.0.53"]
 

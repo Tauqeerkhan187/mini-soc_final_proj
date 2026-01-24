@@ -46,6 +46,10 @@ class DnsSpikeRule(Rule):
             lambda: defaultdict(int))
         self.last_alert_time: Dict[str, float] = {}
 
+        self.ignore_localhost: bool = bool(self.config.get("ignore_localhost", False))
+        self.ignore_src_prefixes: List[str] = list(self.config.get("ignore_src_prefixes", []))
+        self.ignore_dst_ips: List[str] = list(self.config.get("ignore_dst_ips", []))
+
 
     def _prune(self, src: str, now: float) -> None:
         """
@@ -75,6 +79,23 @@ class DnsSpikeRule(Rule):
         return last is None or (now - last) >= self.cooldown_seconds
 
 
+    def _should_ignore(self, src: str, dst: str) -> bool:
+        """
+        Decide whether DNS event should be ignored (e.g. localhost)
+        """
+        if not self.ignore_localhost:
+            return False
+
+        for pfx in self.ignore_src_prefixes:
+            if src.startswith(pfx):
+                return True
+
+        if dst in self.ignore_dst_ips:
+            return True
+
+        return False
+
+
     def process(self, event: NetEvent) -> List[Alert]:
         """
         Process a single NetEvents object and return 0...n alerts.
@@ -92,6 +113,10 @@ class DnsSpikeRule(Rule):
         src = event.src_ip
         dst = event.dst_ip
         now = float(event.ts)
+
+        # ignore localhost
+        if self._should_ignore(src, dst):
+            return []
 
         # Record DNS query timestamp
         self.q_times[src].append(now)

@@ -24,24 +24,31 @@ class DnsSpikeRule(Rule):
 
     def __init__(self, config = None):
 
+        super().__init__(config)
+
         # Sliding win parameters
 
-        self.window_seconds: int = int(self.config,get("windows_seconds", 10))
-        self.query_threshold: int = int(self.config.get("query_threshold", 20))
+        self.window_seconds: int = int(self.config.get(
+            "windows_seconds", 10))
+        self.query_threshold: int = int(self.config.get
+                                        ("query_threshold", 15))
         # unique threshold 0 = disabled
-        self.unique_dst_threshold: int = int(self.config.get("unique_dst_threshold", 0))
-        self.min_window_packets: int = int(self.config,get("min_window_packets", 8))
-        self.cooldown_seconds: int = int(self.config.get("cooldown_seconds", 20))
-
+        self.unique_dst_threshold: int = int(self.config.get(
+            "unique_dst_threshold", 0))
+        self.min_window_packets: int = int(self.config.get
+                                           ("min_window_packets", 8))
+        self.cooldown_seconds: int = int(self.config.get
+                                         ("cooldown_seconds", 20))
 
         self.q_times: Dict[str, Deque[float]] = defaultdict(deque)
-        self.dst_times: Dict[str, Deque[Tuple[float, str]]] = defaultdict(deque)
+        self.dst_times: Dict[str, Deque[Tuple[float, str]]] = defaultdict(
+            deque)
         self.dst_counts: Dict[str, Dict[str, int]] = defaultdict(
             lambda: defaultdict(int))
         self.last_alert_time: Dict[str, float] = {}
 
 
-    def _prune(self, src: str, now: float):
+    def _prune(self, src: str, now: float) -> None:
         """
         removes entries older than win_seconds for this src.
         """
@@ -108,10 +115,10 @@ class DnsSpikeRule(Rule):
         trigger_unique = self.unique_dst_threshold > 0 and unique_dst >=
         self.unique_dst_threshold
 
-        if(trigger_rate or trigger_unique) and self.cooldown_ok(src, now):
+        if(trigger_rate or trigger_unique) and self._cooldown_ok(src, now):
             self.last_alert_time[src] = now
 
-            reason = []
+            reason: List[str] = []
             if trigger_rate:
                 reasons.append(f"rate = {total_q}/{self.window_seconds}s
                 (>= {self.query_threshold})")

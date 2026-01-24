@@ -22,23 +22,22 @@ class DnsSpikeRule(Rule):
     name = "DNS Spike"
     severity = "medium"
 
-    def __init__(self, config = None):
+    def __init__(self, config=None):
 
         super().__init__(config)
 
         # Sliding win parameters
 
-        self.window_seconds: int = int(self.config.get(
-            "windows_seconds", 10))
-        self.query_threshold: int = int(self.config.get
-                                        ("query_threshold", 15))
+        self.window_seconds: int = int(self.config.get("windows_seconds", 10))
+        self.query_threshold: int = int(self.config.get ("query_threshold", 15))
         # unique threshold 0 = disabled
-        self.unique_dst_threshold: int = int(self.config.get(
-            "unique_dst_threshold", 0))
-        self.min_window_packets: int = int(self.config.get
-                                           ("min_window_packets", 8))
-        self.cooldown_seconds: int = int(self.config.get
-                                         ("cooldown_seconds", 20))
+        self.unique_dst_threshold: int = int(self.config.get( "unique_dst_threshold", 0))
+        self.min_window_packets: int = int(self.config.get ("min_window_packets", 8))
+        self.cooldown_seconds: int = int(self.config.get ("cooldown_seconds", 20))
+
+        # tracks unique dns servers (optional)
+        self.unique_dst_threshold: int = int(self.config.get("unique_dst_threshold"))
+
 
         self.q_times: Dict[str, Deque[float]] = defaultdict(deque)
         self.dst_times: Dict[str, Deque[Tuple[float, str]]] = defaultdict(
@@ -103,7 +102,7 @@ class DnsSpikeRule(Rule):
             self.dst_counts[src][dst] += 1
 
         # prune old timestamps outside the sliding window
-        self.prune(src, now)
+        self._prune(src, now)
 
         total_q = len(self.q_times[src])
         if total_q < self.min_window_packets:
@@ -112,19 +111,19 @@ class DnsSpikeRule(Rule):
         unique_dst = len(self.dst_counts[src]) if self.unique_dst_threshold > 0 else 0
 
         trigger_rate = total_q >= self.query_threshold
-        trigger_unique = self.unique_dst_threshold > 0 and unique_dst >=
-        self.unique_dst_threshold
+        trigger_unique = (self.unique_dst_threshold > 0
+        and unique_dst >= self.unique_dst_threshold)
 
         if(trigger_rate or trigger_unique) and self._cooldown_ok(src, now):
             self.last_alert_time[src] = now
 
-            reason: List[str] = []
+            reasons: List[str] = []
             if trigger_rate:
-                reasons.append(f"rate = {total_q}/{self.window_seconds}s
-                (>= {self.query_threshold})")
-                 if trigger_unique:
-            reasons.append(f"unique_dns_servers={unique_dst}
-                           (>= {self.unique_dst_threshold})")
+                reasons.append(
+                     f"rate={total_q}/{self.window_seconds}s (>= {self.query_threshold})")
+
+            if trigger_unique:
+                reasons.append(f"unique_dns_servers={unique_dst} (>= {self.unique_dst_threshold})")
 
         return [
             Alert(
@@ -147,4 +146,3 @@ class DnsSpikeRule(Rule):
             )
         ]
 
-    return []

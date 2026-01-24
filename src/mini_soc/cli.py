@@ -19,7 +19,7 @@ from .capture import events_from_pcap
 from .models import Alert
 from .reporter import save_alerts_json
 from .rules.port_scan import PortScanRule
-from .rules.dns_spike import DnsSpikeRule
+from .rules.dns_spikes import DnsSpikeRule
 
 def load_config(path: str):
     """Load the YAML config file

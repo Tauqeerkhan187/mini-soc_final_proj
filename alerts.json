@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "ts": 1769134551.370544,
+    "rule_id": "dns_spike",
+    "severity": "medium",
+    "title": "DNS query spike detected !",
+    "description": "127.0.0.1 generated high DNS activity: rate=3/10s (>= 3)",
+    "src_ip": "127.0.0.1",
+    "dst_ip": "127.0.0.53",
+    "evidence": {
+      "proto": "UDP",
+      "src_port": 47407,
+      "dst_port": 53,
+      "window_seconds": 10,
+      "total_queries_in_window": 3,
+      "unique_dns_servers_in_window": 0,
+      "cooldown_seconds": 20
+    }
+  },
+  {
+    "ts": 1769134551.370615,
+    "rule_id": "dns_spike",
+    "severity": "medium",
+    "title": "DNS query spike detected !",
+    "description": "10.0.2.15 generated high DNS activity: rate=3/10s (>= 3)",
+    "src_ip": "10.0.2.15",
+    "dst_ip": "84.235.57.230",
+    "evidence": {
+      "proto": "UDP",
+      "src_port": 47442,
+      "dst_port": 53,
+      "window_seconds": 10,
+      "total_queries_in_window": 3,
+      "unique_dns_servers_in_window": 0,
+      "cooldown_seconds": 20
+    }
+  }
+]

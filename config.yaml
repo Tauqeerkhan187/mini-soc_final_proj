@@ -4,3 +4,11 @@ rules:
     threshold_ports: 12
     cooldown_sec: 15
 
+
+  dns_spike:
+    window_seconds: 10
+    query_threshold: 3
+    min_window_packets: 3
+    _cooldown_seconds: 5
+    unique_dst_threshold: 0
+

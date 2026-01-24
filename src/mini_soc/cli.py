@@ -19,6 +19,7 @@ from .capture import events_from_pcap
 from .models import Alert
 from .reporter import save_alerts_json
 from .rules.port_scan import PortScanRule
+from .rules.dns_spike import DnsSpikeRule
 
 def load_config(path: str):
     """Load the YAML config file
@@ -51,7 +52,7 @@ def main():
     # extract rule specific config
     rules = [
         PortScanRule(rules_cfg.get("port_scan", {}))
-
+        DnsSpikeRule(rules_cfg.get("dns_spike", {})),
     ]
 
     # alert collection

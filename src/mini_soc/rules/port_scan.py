@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from typing import Deque, Dict, List, Tuple
 from .base import Rule
-from ..models import NetEvents, Alert
+from ..models import NetEvent, Alert
 
 class PortScanRule(Rule):
     rule_id = "PORTSCAN"

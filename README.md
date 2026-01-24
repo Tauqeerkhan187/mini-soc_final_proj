@@ -28,7 +28,7 @@ It is designed to be:
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 mini-soc/
@@ -222,3 +222,4 @@ These limitations are intentional to keep the framework simple and extensible.
 **TK**
 Cyber Security Student
 23-01-2026
+
